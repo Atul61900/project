@@ -6,6 +6,7 @@ import ThemeToggle from './ThemeToggle';
 import WatchlistDropdown from './WatchlistDropdown';
 import NotificationsDropdown from './NotificationsDropdown';
 import SearchDropdown from './SearchDropdown';
+import { toast } from 'sonner';
 
 const link = ({ isActive }) =>
   `relative px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all duration-300 ${
@@ -30,6 +31,7 @@ export default function Navbar() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const searchRef = useRef(null);
+  const recognitionRef = useRef(null);
 
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -38,21 +40,46 @@ export default function Navbar() {
   const toggleListening = useCallback(() => {
     if (!isSpeechSupported) return;
     if (isListening) {
+      recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setSearchQuery(transcript);
-      setIsListening(false);
-    };
-    recognition.start();
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (event) => {
+        console.error('Navbar speech recognition error', event);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          toast.error('Microphone access was denied. Please check your browser microphone permissions.');
+        } else if (event.error === 'no-speech') {
+          toast.error('No speech detected. Please speak clearly.');
+        } else if (event.error === 'network') {
+          toast.error('Speech recognition network error. Ensure you have a stable internet connection and are using Google Chrome.');
+        }
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setSearchQuery(transcript);
+        setIsListening(false);
+      };
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition in navbar', err);
+      toast.error('Failed to start speech recognition.');
+    }
   }, [isSpeechSupported, isListening, SpeechRecognition]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
 
   useEffect(() => {

@@ -4,6 +4,7 @@ import api from '../api/client';
 import SectionHeader from '../components/SectionHeader';
 import SeriesCard from '../components/SeriesCard';
 import Spinner from '../components/Spinner';
+import { toast } from 'sonner';
 
 function useDebounced(value, delay) {
   const [v, setV] = useState(value);
@@ -36,6 +37,7 @@ export default function SearchPage() {
   const isResultsMode = !!q.trim();
 
   const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     if (unifiedInputRef.current) {
@@ -60,21 +62,48 @@ export default function SearchPage() {
   const toggleListening = () => {
     if (!isSupported) return;
     if (isListening) {
+      recognitionRef.current?.stop();
       setIsListening(false);
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setQ(transcript);
-      setIsListening(false);
-    };
-    recognition.start();
+    try {
+      const recognition = new SpeechRecognition();
+      recognitionRef.current = recognition;
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error', event);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          toast.error('Microphone access was denied. Please check your browser microphone permissions.');
+        } else if (event.error === 'no-speech') {
+          toast.error('No speech detected. Please speak clearly into your microphone.');
+        } else if (event.error === 'network') {
+          toast.error("Speech recognition network error. Ensure you have a stable internet connection and are using Google Chrome (which hosts the browser's speech recognition cloud servers).");
+        } else {
+          toast.error(`Speech recognition failed: ${event.error || 'unknown error'}`);
+        }
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setQ(transcript);
+        setIsListening(false);
+      };
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition', err);
+      toast.error('Failed to start speech recognition.');
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,30 +152,30 @@ export default function SearchPage() {
           </div>
         )}
 
-        <div className={`relative group w-full transition-all duration-700 ease-in-out ${isResultsMode ? 'max-w-2xl translate-y-0' : 'max-w-3xl translate-y-0'}`}>
+        <div className={`relative group w-full transition-all duration-500 ease-in-out ${isResultsMode ? 'max-w-xl translate-y-0' : 'max-w-2xl translate-y-0'}`}>
           <input
             ref={unifiedInputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={isListening ? 'Listening…' : 'Explore series, genres, or tags…'}
-            className={`w-full transition-all duration-700 outline-none border-2 shadow-2xl font-medium
+            className={`w-full transition-all duration-500 outline-none border shadow-lg font-medium
               ${isResultsMode 
-                ? 'px-7 py-4 pl-14 pr-32 rounded-[2rem] text-lg bg-white border-slate-300 focus:border-teal-500 focus:shadow-teal-500/15 dark:bg-charcoal-900 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500 placeholder:font-normal'
-                : 'px-9 py-7 pl-16 pr-44 rounded-[3.5rem] text-2xl bg-white border-slate-200 focus:border-teal-500/40 focus:ring-4 focus:ring-teal-500/15 dark:bg-charcoal-850 dark:border-white/5 dark:text-white placeholder:font-normal dark:placeholder:text-slate-700'
+                ? 'px-5 py-2.5 pl-12 pr-24 rounded-2xl text-base bg-white border-slate-200 focus:border-teal-500 focus:shadow-teal-500/10 dark:bg-charcoal-900 dark:border-white/10 dark:text-white dark:placeholder:text-slate-500 placeholder:font-normal'
+                : 'px-6 py-3.5 pl-14 pr-28 rounded-2xl text-lg bg-white border-slate-200 focus:border-teal-500/40 focus:ring-4 focus:ring-teal-500/10 dark:bg-charcoal-850 dark:border-white/5 dark:text-white placeholder:font-normal dark:placeholder:text-slate-700'
               }`}
           />
           
-          <div className={`absolute left-7 top-1/2 -translate-y-1/2 text-slate-400 transition-all duration-700 group-focus-within:text-teal-500 ${isResultsMode ? 'scale-100' : 'scale-125'}`}>
-            <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <div className={`absolute top-1/2 -translate-y-1/2 text-slate-400 transition-all duration-500 group-focus-within:text-teal-500 ${isResultsMode ? 'left-4 scale-95' : 'left-5 scale-100'}`}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </div>
           
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 transition-all duration-700">
+          <div className={`absolute top-1/2 -translate-y-1/2 flex items-center transition-all duration-500 ${isResultsMode ? 'right-3 gap-1' : 'right-4 gap-2'}`}>
             {q && (
               <button 
                 onClick={clearSearch} 
-                className="p-2 text-slate-300 hover:text-rose-500 rounded-full transition-all duration-300"
+                className="p-1.5 text-slate-400 hover:text-rose-500 rounded-full transition-all duration-300"
               >
-                <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             )}
             
@@ -154,9 +183,13 @@ export default function SearchPage() {
                <button
                  type="button"
                  onClick={toggleListening}
-                 className={`flex items-center justify-center rounded-2xl transition-all duration-300 ${isListening ? 'bg-rose-500 text-white shadow-lg animate-pulse scale-110' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'} ${isResultsMode ? 'w-10 h-10' : 'w-14 h-14'}`}
+                 className={`flex items-center justify-center rounded-xl transition-all duration-300 ${
+                   isListening 
+                     ? 'bg-rose-500 text-white shadow-lg animate-pulse scale-105' 
+                     : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10'
+                 } ${isResultsMode ? 'w-8 h-8' : 'w-10 h-10'}`}
                >
-                 <svg width={isResultsMode ? 22 : 28} height={isResultsMode ? 22 : 28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                 <svg width={isResultsMode ? 16 : 20} height={isResultsMode ? 16 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
                </button>
             )}
           </div>
